@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Custom Medical Styles */
+.btn-medical {
+    @apply transition-transform active:scale-95 shadow-md;
+}
+
+.input-med {
+    @apply text-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none;
+}
+
+/* Scrollbar hide for clean modals */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}

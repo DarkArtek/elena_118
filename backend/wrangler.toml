@@ -1,0 +1,14 @@
+name = "elena-backend"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+# Bindings per il Database D1
+[[d1_databases]]
+binding = "DB" # Nome che useremo nel codice JS
+database_name = "elena-db"
+database_id = "c267f11a-cc2e-4095-8303-e208298a3ee2" # Lo ottieni con: npx wrangler d1 create elena-db
+
+# Variabili d'ambiente (Non mettere qui la chiave API reale se committi su git)
+# Usa 'npx wrangler secret put GEMINI_API_KEY' per salvarla al sicuro
+[vars]
+# GEMINI_API_KEY = "..."
