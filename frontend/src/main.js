@@ -19,7 +19,8 @@ import {
     faHeartCircleBolt,
     faHeartCircleCheck,
     faHeartCircleExclamation,
-    faUserDoctor
+    faUserDoctor,
+    faPowerOff
 } from "@fortawesome/free-solid-svg-icons";
 // Aggiungiamo le icone alla libreria
 library.add(
@@ -33,7 +34,8 @@ library.add(
     faStaffAesculapius,
     faStaffSnake,
     faHeartCircleBolt,
-    faUserDoctor
+    faUserDoctor,
+    faPowerOff
 )
 
 // Creazione dell'istanza Vue
