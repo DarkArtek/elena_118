@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 async function updateAifaData(env) {
     console.log("🔄 Avvio procedura aggiornamento AIFA...");
     const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
-    let logs = []; // Raccogliamo i log per restituirli se chiamati via HTTP
+    let logs = [];
 
     try {
         const log = (msg) => { console.log(msg); logs.push(msg); };
@@ -15,37 +15,27 @@ async function updateAifaData(env) {
 
         const csvText = await response.text();
         const rows = csvText.split('\n');
-        const dataRows = rows.slice(1); // Salta header
+        const dataRows = rows.slice(1);
 
         log(`Trovate ${dataRows.length} righe. Inizio elaborazione...`);
 
-        // FIX CRITICO: Aumentato batchSize per evitare "Error: Too many subrequests"
-        // Cloudflare Workers ha un limite di 50 subrequests.
-        // 99.000 / 4.000 = ~25 richieste (ben sotto il limite di 50)
         const batchSize = 4000;
         let batch = [];
         let count = 0;
-
-        // FIX DUPLICATI: Teniamo traccia degli AIC già processati in questa esecuzione
         const processedAics = new Set();
 
         for (const row of dataRows) {
             if (!row.trim()) continue;
 
             const cols = row.split(';');
-
-            // 0: codice_aic, 3: denominazione, 6: ditta, 11: principio_attivo
             if (cols.length < 12) continue;
 
             const clean = (txt) => txt ? txt.replace(/"/g, '').trim() : null;
             const aic = clean(cols[0]);
 
-            // Se l'AIC non è valido o lo abbiamo già processato in questo giro, saltiamo
             if (!aic || processedAics.has(aic)) {
                 continue;
             }
-
-            // Aggiungiamo al set dei processati
             processedAics.add(aic);
 
             batch.push({
@@ -60,9 +50,6 @@ async function updateAifaData(env) {
                 const { error } = await supabase.from('farmaci').upsert(batch, { onConflict: 'aic_code' });
                 if (error) console.error("Errore batch:", error.message);
                 else count += batch.length;
-
-                // Opzionale: piccolo delay per non saturare Supabase
-                // await new Promise(r => setTimeout(r, 100));
                 batch = [];
             }
         }
@@ -82,7 +69,6 @@ async function updateAifaData(env) {
 }
 
 export default {
-    // --- GESTIONE CHIAMATE HTTP ---
     async fetch(request, env, ctx) {
         const corsHeaders = {
             "Access-Control-Allow-Origin": "*",
@@ -112,7 +98,9 @@ export default {
             if (data.type === 'drug_search') {
                 const query = data.query.trim();
                 let dbRecord = null;
+                let aiText = "";
 
+                // 1. Cerca nel DB AIFA
                 const { data: farmaci } = await supabase
                     .from('farmaci')
                     .select('*')
@@ -121,48 +109,88 @@ export default {
 
                 if (farmaci && farmaci.length > 0) {
                     dbRecord = farmaci[0];
-                    if (dbRecord.ai_summary) {
-                        return new Response(JSON.stringify({ analysis: dbRecord.ai_summary }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+                }
+
+                // 2. Ottieni testo AI (da Cache o Nuova Generazione)
+                if (dbRecord && dbRecord.ai_summary) {
+                    aiText = dbRecord.ai_summary;
+                    console.log("✅ Cache HIT per:", dbRecord.denominazione);
+                } else {
+                    console.log("⚠️ Cache MISS. Chiedo a Gemini...");
+
+                    const systemInstruction = `
+                        Sei un assistente farmacologico esperto per il soccorso sanitario 118.
+                        Analizza il farmaco richiesto: "${dbRecord ? dbRecord.denominazione : query}".
+                        ${dbRecord ? `(Dati Ufficiali AIFA: Principio Attivo: ${dbRecord.principio_attivo})` : ''}
+                        
+                        DEVI PRODURRE UN OUTPUT HTML CON QUESTA STRUTTURA ESATTA:
+                        1. <b>Principio Attivo & Classe:</b> [Nome], [Classe Farmacologica].
+                        2. <b>A cosa serve (Sintesi):</b> [Indicazioni principali].
+                        3. <b>⚠️ ALERT PER IL SOCCORRITORE:</b> [Rischi vitali, interazioni critiche].
+                    `;
+
+                    const geminiResponse = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${env.GEMINI_API_KEY}`,
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: "Genera scheda." }] }],
+                                systemInstruction: { parts: [{ text: systemInstruction }] }
+                            })
+                        }
+                    );
+
+                    const geminiJson = await geminiResponse.json();
+                    aiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text || "Nessuna informazione disponibile.";
+
+                    // Salva in Cache se abbiamo un record DB (CON DEBUG ERRORI)
+                    if (dbRecord) {
+                        const { error: updateError } = await supabase
+                            .from('farmaci')
+                            .update({
+                                ai_summary: aiText,
+                                ai_updated_at: new Date()
+                            })
+                            .eq('aic_code', dbRecord.aic_code);
+
+                        if (updateError) {
+                            console.error("❌ ERRORE SCRITTURA CACHE:", updateError);
+                        } else {
+                            console.log("✅ Cache salvata con successo per:", dbRecord.denominazione);
+                        }
                     }
                 }
 
-                // Chiamata Gemini (se non in cache)
-                const systemInstruction = `
-                    Sei un assistente farmacologico esperto per il soccorso sanitario 118.
-                    Analizza il farmaco richiesto: "${dbRecord ? dbRecord.denominazione : query}".
-                    ${dbRecord ? `(Dati Ufficiali AIFA: Principio Attivo: ${dbRecord.principio_attivo})` : ''}
-                    
-                    DEVI PRODURRE UN OUTPUT HTML CON QUESTA STRUTTURA ESATTA:
-                    1. <b>Principio Attivo & Classe:</b> [Nome], [Classe Farmacologica].
-                    2. <b>A cosa serve (Sintesi):</b> [Indicazioni principali].
-                    3. <b>⚠️ ALERT PER IL SOCCORRITORE:</b> [Rischi vitali, interazioni critiche].
-                `;
-
-                const geminiResponse = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${env.GEMINI_API_KEY}`,
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: "Genera scheda." }] }],
-                            systemInstruction: { parts: [{ text: systemInstruction }] }
-                        })
-                    }
-                );
-
-                const geminiJson = await geminiResponse.json();
-                const aiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text || "Nessuna informazione disponibile.";
+                // 3. Costruzione Risposta Finale (Unione Dati Ufficiali + AI)
+                let finalOutput = aiText;
 
                 if (dbRecord) {
-                    await supabase.from('farmaci').update({ ai_summary: aiText, ai_updated_at: new Date() }).eq('aic_code', dbRecord.aic_code);
+                    const aifaBlock = `
+                        <div class="mb-5 p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm shadow-sm">
+                            <div class="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200 text-[#23408e] font-bold uppercase tracking-wider text-xs">
+                                <i class="fa-solid fa-certificate"></i> Dati Ufficiali AIFA
+                            </div>
+                            <div class="space-y-1 text-slate-600">
+                                <div><span class="font-semibold text-slate-800">Denominazione:</span> ${dbRecord.denominazione}</div>
+                                <div><span class="font-semibold text-slate-800">Principio Attivo:</span> ${dbRecord.principio_attivo}</div>
+                                <div class="flex gap-4">
+                                    <div><span class="font-semibold text-slate-800">AIC:</span> ${dbRecord.aic_code}</div>
+                                    <div class="truncate"><span class="font-semibold text-slate-800">Ditta:</span> ${dbRecord.ditta}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    finalOutput = aifaBlock + aiText;
                 }
 
-                return new Response(JSON.stringify({ analysis: aiText }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+                return new Response(JSON.stringify({ analysis: finalOutput }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
             }
 
             // ---------------------------------------------------------
             // MODALITÀ 2: ANALISI CLINICA (Standard)
             // ---------------------------------------------------------
+            // ... (Resto del codice invariato)
             const systemInstruction = `
                 Sei la Dr.ssa Elena Vitali, dottoressa digitale per il SUEM 118.
                 COMPITO: Analisi clinica e assegnazione CODICE COLORE DI RIENTRO (Triage).
@@ -197,7 +225,6 @@ export default {
         }
     },
 
-    // --- GESTIONE CRON JOB (Automatico) ---
     async scheduled(event, env, ctx) {
         await updateAifaData(env);
     }
