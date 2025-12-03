@@ -17,31 +17,49 @@ const toggleMission = (id) => {
   openId.value = openId.value === id ? null : id;
 };
 
-// Cancellazione Totale
 const deleteAll = async () => {
   if(confirm("🚨 SEI SICURO?\n\nStai per cancellare PER SEMPRE tutto lo storico interventi dal database.\nQuesta operazione non è reversibile.")) {
     await store.deleteAllMissions();
   }
 }
 
-// Cancellazione Singola
 const deleteSingle = async (id, summary) => {
   if(confirm(`Vuoi eliminare definitivamente l'intervento:\n"${summary}"?`)) {
-    // Se era aperto, chiudiamolo per evitare glitch grafici
     if (openId.value === id) openId.value = null;
     await store.deleteMission(id);
   }
 }
 
+// Funzione di formattazione potenziata per gestire output misti/sporchi
 const formatMissionText = (text) => {
   if (!text) return '';
-  if (text.includes('<b') || text.includes('data-ai-triage')) {
-    return text;
+
+  let formatted = text;
+
+  // 1. Gestione TITOLI (### Titolo)
+  // Sostituisce "### Qualcosa:" o "### Qualcosa" con un blocco titolo HTML stiloso
+  formatted = formatted.replace(/###\s*(.*?)(:|\n|$)/g, '<div class="font-bold text-blue-800 mt-4 mb-2 uppercase text-xs tracking-wider border-b border-blue-100 pb-1">$1</div>');
+
+  // 2. Gestione GRASSETTO (**testo**)
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-900 font-bold">$1</strong>');
+
+  // 3. Gestione LISTE COMPATTE (• punto)
+  // Se c'è un punto elenco che NON è preceduto da un "a capo" o da un tag HTML di chiusura, forziamo il <br>
+  // Questo risolve il problema del "muro di testo"
+  formatted = formatted.replace(/([^\n>])\s*•/g, '$1<br>•');
+  // Formattiamo il punto elenco stesso per dargli un po' di spazio
+  formatted = formatted.replace(/•/g, '<span class="text-blue-400 mr-1">•</span>');
+
+  // 4. Gestione A CAPO Standard
+  // Se non ci sono già <br> o <p> strutturali, convertiamo i \n
+  if (!formatted.includes('<br') && !formatted.includes('<div') && !formatted.includes('<p>')) {
+    formatted = formatted.replace(/\n/g, '<br>');
+  } else {
+    // Anche se c'è HTML, i \n residui vanno convertiti per mantenere la formattazione
+    formatted = formatted.replace(/\n/g, '<br>');
   }
-  return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br>')
-      .replace(/\* /g, '• ');
+
+  return formatted;
 };
 </script>
 
@@ -49,10 +67,10 @@ const formatMissionText = (text) => {
   <div class="p-4 pb-24">
 
     <!-- Intestazione Pagina -->
-    <div class="flex justify-between items-center mb-6 sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-10">
+    <div class="flex justify-between items-center mb-6 sticky top-0 bg-slate-50/95 backdrop-blur py-2 z-10 border-b border-slate-100/50">
       <div>
         <h2 class="text-xl font-bold text-slate-800">Storico Missioni</h2>
-        <p class="text-xs text-slate-500">&copy; 2025 Luca Forzutti</p>
+        <p class="text-xs text-slate-500">Cloud Sync • Supabase</p>
       </div>
       <button v-if="missions.length" @click="deleteAll" class="text-xs text-red-500 hover:text-red-700 font-medium px-3 py-2 rounded border border-red-200 hover:bg-red-50 transition-colors">
         <i class="fa-solid fa-dumpster-fire mr-1"></i> Elimina Tutto
@@ -84,7 +102,6 @@ const formatMissionText = (text) => {
         <!-- HEADER (Sempre visibile) -->
         <div @click="toggleMission(mission.id)" class="p-4 cursor-pointer hover:bg-slate-50 transition-colors flex justify-between items-center gap-3">
 
-          <!-- Parte Sinistra: Dati -->
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
                         <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
@@ -96,16 +113,13 @@ const formatMissionText = (text) => {
             </h3>
           </div>
 
-          <!-- Parte Destra: Azioni e Icona -->
           <div class="flex items-center gap-3">
-            <!-- Tasto Cestino (Visibile sempre, ma con stop propagation) -->
             <button @click.stop="deleteSingle(mission.id, mission.summary)"
                     class="w-8 h-8 flex items-center justify-center rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                     title="Elimina intervento">
               <i class="fa-regular fa-trash-can"></i>
             </button>
 
-            <!-- Icona Chevron -->
             <div class="text-slate-300 transition-transform duration-300" :class="{'rotate-180 text-blue-500': openId === mission.id}">
               <i class="fa-solid fa-chevron-down"></i>
             </div>
@@ -114,6 +128,7 @@ const formatMissionText = (text) => {
 
         <!-- BODY (Visibile solo se aperto) -->
         <div v-if="openId === mission.id" class="border-t border-slate-100 bg-slate-50/50 p-5 animate-fade-in">
+          <!-- Qui applichiamo la formattazione forzata -->
           <div class="prose prose-sm prose-slate max-w-none text-slate-600 leading-relaxed text-sm" v-html="formatMissionText(mission.text)"></div>
 
           <div class="mt-4 pt-3 border-t border-slate-200 flex justify-end">
@@ -138,6 +153,7 @@ const formatMissionText = (text) => {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Stili per l'HTML iniettato */
 :deep(b), :deep(strong) {
   color: #1e3a8a;
   font-weight: 700;
