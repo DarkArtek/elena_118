@@ -11,6 +11,12 @@ database_id = "c267f11a-cc2e-4095-8303-e208298a3ee2" # Lo ottieni con: npx wrang
 [triggers]
 crons = ["0 3 * * *"]
 
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
 
 # Variabili d'ambiente (Non mettere qui la chiave API reale se committi su git)
 # Usa 'npx wrangler secret put GEMINI_API_KEY' per salvarla al sicuro
