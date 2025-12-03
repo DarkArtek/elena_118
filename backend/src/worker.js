@@ -26,6 +26,9 @@ async function updateAifaData(env) {
         let batch = [];
         let count = 0;
 
+        // FIX DUPLICATI: Teniamo traccia degli AIC già processati in questa esecuzione
+        const processedAics = new Set();
+
         for (const row of dataRows) {
             if (!row.trim()) continue;
 
@@ -35,9 +38,18 @@ async function updateAifaData(env) {
             if (cols.length < 12) continue;
 
             const clean = (txt) => txt ? txt.replace(/"/g, '').trim() : null;
+            const aic = clean(cols[0]);
+
+            // Se l'AIC non è valido o lo abbiamo già processato in questo giro, saltiamo
+            if (!aic || processedAics.has(aic)) {
+                continue;
+            }
+
+            // Aggiungiamo al set dei processati
+            processedAics.add(aic);
 
             batch.push({
-                aic_code: clean(cols[0]),
+                aic_code: aic,
                 denominazione: clean(cols[3]),
                 principio_attivo: clean(cols[11]),
                 ditta: clean(cols[6]),
@@ -60,7 +72,7 @@ async function updateAifaData(env) {
             if (!error) count += batch.length;
         }
 
-        log(`✅ Aggiornamento completato. Processati ${count} farmaci.`);
+        log(`✅ Aggiornamento completato. Processati ${count} farmaci unici.`);
         return { success: true, logs };
 
     } catch (error) {
