@@ -31,17 +31,16 @@ export const useHistoryStore = defineStore('history', () => {
         if (!authStore.user) return;
 
         const newMission = {
-            user_id: authStore.user.id, // Vincola al soccorritore
+            user_id: authStore.user.id,
             summary: summary,
-            text: text, // HTML content
+            text: text,
             created_at: new Date().toISOString()
         };
 
-        // 1. Aggiornamento Ottimistico (lo mostro subito)
+        // Aggiornamento Ottimistico
         const tempId = Date.now();
         missions.value.unshift({ ...newMission, id: tempId });
 
-        // 2. Salvataggio Reale
         const { data, error } = await supabase
             .from('interventi')
             .insert([newMission])
@@ -51,22 +50,48 @@ export const useHistoryStore = defineStore('history', () => {
         if (error) {
             console.error("Errore salvataggio cloud:", error);
             alert("⚠️ Errore sincronizzazione. Controlla la connessione.");
-            // Rimuovi l'elemento ottimistico se fallisce
             missions.value = missions.value.filter(m => m.id !== tempId);
         } else {
-            // Sostituisci l'elemento temporaneo con quello vero (che ha l'ID del DB)
             const index = missions.value.findIndex(m => m.id === tempId);
-            if (index !== -1) {
-                missions.value[index] = data;
-            }
+            if (index !== -1) missions.value[index] = data;
         }
     };
 
-    const clearHistory = async () => {
-        // Implementazione cancellazione remota (opzionale per sicurezza)
-        // Per ora puliamo solo la vista locale per evitare cancellazioni accidentali massiva
-        missions.value = [];
+    // --- NUOVO: Cancellazione Singola ---
+    const deleteMission = async (id) => {
+        // Rimuoviamo localmente subito (Feedback istantaneo)
+        const backup = [...missions.value];
+        missions.value = missions.value.filter(m => m.id !== id);
+
+        const { error } = await supabase
+            .from('interventi')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error("Errore cancellazione:", error);
+            alert("Impossibile cancellare l'intervento.");
+            missions.value = backup; // Ripristina se fallisce
+        }
     };
 
-    return { missions, loading, fetchMissions, addMission, clearHistory };
+    // --- NUOVO: Cancellazione Totale ---
+    const deleteAllMissions = async () => {
+        const backup = [...missions.value];
+        missions.value = []; // Pulisci vista
+
+        // Cancella tutto ciò che appartiene a questo utente
+        const { error } = await supabase
+            .from('interventi')
+            .delete()
+            .eq('user_id', authStore.user.id);
+
+        if (error) {
+            console.error("Errore pulizia storico:", error);
+            alert("Errore durante la cancellazione totale.");
+            missions.value = backup;
+        }
+    };
+
+    return { missions, loading, fetchMissions, addMission, deleteMission, deleteAllMissions };
 });
