@@ -3,7 +3,8 @@ import { ref, computed } from 'vue';
 import { usePatientStore } from '@/store/patientStore';
 import { useHistoryStore } from '@/store/historyStore';
 import { analyzePatient } from '@/services/gemini/client';
-import EcgLoader from '@/components/EcgLoader.vue'; // <-- Import componente Loader
+import EcgLoader from '@/components/EcgLoader.vue';
+import {FontAwesomeIcon} from "@fortawesome/vue-fontawesome"; // <-- Import componente Loader
 
 // Stores
 const patientStore = usePatientStore();
@@ -275,7 +276,7 @@ const copyToClipboard = () => {
 
           <!-- TESTO NORMALE (Visibile solo se isLoading è false) -->
           <span v-else>
-                    <i class="fa-solid fa-user-doctor"></i> {{ patientStore.isFastPositive ? 'ANALISI URGENTE' : 'Chiedi a Elena' }}
+                    <font-awesome-icon icon="user-doctor" /> {{ patientStore.isFastPositive ? 'ANALISI URGENTE' : 'Chiedi a Elena' }}
                 </span>
         </button>
       </div>

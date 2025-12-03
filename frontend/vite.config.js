@@ -14,7 +14,7 @@ export default defineConfig({
                 name: 'Elena - Digital Partner 118',
                 short_name: 'Elena 118',
                 description: 'Decision Support System per soccorritori CRI',
-                theme_color: '#1e40af', // Blu medicale (corrisponde all'header)
+                theme_color: '#23408e', // Blu medicale (corrisponde all'header)
                 background_color: '#f1f5f9', // Slate-100 (corrisponde allo sfondo)
                 display: 'standalone', // Rimuove la barra degli indirizzi del browser (sembra nativa)
                 orientation: 'portrait', // Blocca in verticale (utile per l'uso con una mano)

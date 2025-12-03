@@ -16,10 +16,10 @@ const handleLogout = async () => {
 <template>
   <div class="max-w-md mx-auto min-h-screen bg-white shadow-xl relative flex flex-col">
     <!-- Header Comune -->
-    <header v-if="user" class="bg-blue-800 text-white p-4 sticky top-0 z-50 flex items-center justify-between shadow-md">
+    <header v-if="user" class="bg-[#23408e] text-white p-4 sticky top-0 z-50 flex items-center justify-between shadow-md">
       <div class="flex items-center gap-3">
-        <div class="bg-white text-blue-800 rounded-full w-10 h-10 flex items-center justify-center font-bold text-xl">
-          E
+        <div class="bg-white text-[#23408e] rounded-full w-10 h-10 flex items-center justify-center font-bold text-xl">
+            <font-awesome-icon icon="staff-snake" class="text-2xl" />
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight">Elena</h1>
