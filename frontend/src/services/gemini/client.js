@@ -1,6 +1,6 @@
 // ⚠️ IMPORTANTE: Sostituisci questa stringa con il TUO URL reale di Cloudflare Worker
 // Lo ottieni dopo aver fatto 'npx wrangler deploy' nella cartella backend
-const WORKER_URL = "https://elena-backend.ahdcreative.workers.dev";
+const WORKER_URL = import.meta.env.VITE_WORKER_URL;
 
 /**
  * Richiede l'analisi clinica di un paziente (XABCDE + Triage)
