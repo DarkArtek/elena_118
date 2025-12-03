@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { usePatientStore } from '@/store/patientStore';
 import { useHistoryStore } from '@/store/historyStore';
 import { analyzePatient } from '@/services/gemini/client';
+import EcgLoader from '@/components/EcgLoader.vue'; // <-- Import componente Loader
 
 // Stores
 const patientStore = usePatientStore();
@@ -40,7 +41,8 @@ const submitAnalysis = async () => {
   if (isLoading.value) return;
   isLoading.value = true;
 
-  // Simuliamo un minimo di delay per UX se offline
+  // Simuliamo un minimo di delay per UX se offline o per far vedere l'animazione ECG
+  // (l'analisi reale potrebbe essere istantanea, un piccolo delay aiuta l'utente a capire che sta elaborando)
   const analysisText = await analyzePatient(form);
 
   result.value = analysisText;
@@ -260,9 +262,18 @@ const copyToClipboard = () => {
       <div class="max-w-md mx-auto">
         <button @click="submitAnalysis"
                 :disabled="isLoading"
-                :class="['w-full py-4 rounded-xl font-bold text-lg shadow-xl flex items-center justify-center gap-3 btn-medical text-white',
-                         isLoading ? 'bg-slate-400 cursor-not-allowed' : (patientStore.isFastPositive ? 'bg-red-600 animate-pulse' : 'bg-blue-700')]">
-          <span v-if="isLoading"><i class="fa-solid fa-circle-notch fa-spin"></i> Ragionamento...</span>
+                :class="['w-full py-4 rounded-xl font-bold text-lg shadow-xl flex items-center justify-center gap-3 btn-medical text-white overflow-hidden relative',
+                         isLoading ? 'bg-slate-800 cursor-not-allowed' : (patientStore.isFastPositive ? 'bg-red-600 animate-pulse' : 'bg-blue-700')]">
+
+          <!-- LOADER ANIMATO (Visibile solo se isLoading è true) -->
+          <!-- Il div assoluto copre tutto il bottone -->
+          <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-slate-800">
+            <div class="w-32"> <!-- Contenitore per dare una dimensione fissa al loader ECG -->
+              <EcgLoader color="white" />
+            </div>
+          </div>
+
+          <!-- TESTO NORMALE (Visibile solo se isLoading è false) -->
           <span v-else>
                     <i class="fa-solid fa-user-doctor"></i> {{ patientStore.isFastPositive ? 'ANALISI URGENTE' : 'Chiedi a Elena' }}
                 </span>
