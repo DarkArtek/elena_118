@@ -19,7 +19,10 @@ async function updateAifaData(env) {
 
         log(`Trovate ${dataRows.length} righe. Inizio elaborazione...`);
 
-        const batchSize = 100;
+        // FIX CRITICO: Aumentato batchSize per evitare "Error: Too many subrequests"
+        // Cloudflare Workers ha un limite di 50 subrequests.
+        // 99.000 / 4.000 = ~25 richieste (ben sotto il limite di 50)
+        const batchSize = 4000;
         let batch = [];
         let count = 0;
 
@@ -45,6 +48,9 @@ async function updateAifaData(env) {
                 const { error } = await supabase.from('farmaci').upsert(batch, { onConflict: 'aic_code' });
                 if (error) console.error("Errore batch:", error.message);
                 else count += batch.length;
+
+                // Opzionale: piccolo delay per non saturare Supabase
+                // await new Promise(r => setTimeout(r, 100));
                 batch = [];
             }
         }
