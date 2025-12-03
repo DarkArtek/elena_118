@@ -171,7 +171,8 @@ export default {
                             ai_summary: aiText,
                             ai_updated_at: new Date().toISOString() // FIX: Formato data corretto
                         })
-                        .eq('aic_code', dbRecord.aic_code);
+                        .eq('aic_code', dbRecord.aic_code)
+                        .select();
 
                     if (updateError) {
                         console.error("❌ Errore salvataggio cache:", updateError.message);
