@@ -19,43 +19,80 @@ const handleSearch = async () => {
   loading.value = false;
 };
 
-// Funzione di formattazione specifica per i farmaci
+// Funzione di formattazione AVANZATA & AGGRESSIVA (Versione 3.1 - Fix HTML Tags)
 const formatDrugResult = (text) => {
   if (!text) return '';
+
   let formatted = text;
 
-  // 1. Pulizia base Markdown -> HTML
+  // 0. PRE-LAVAGGIO (Pulizia profonda del testo grezzo)
+
+  // Rimuove i tag di codice Markdown (```html, ```) all'inizio e alla fine
+  formatted = formatted.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+
+  // Rimuove i numeri di lista all'inizio delle righe (es. "1.", "2.")
+  formatted = formatted.replace(/^\d+\.?\s*/gm, '');
+
+  // Rimuove righe che contengono solo spazi o caratteri invisibili
+  formatted = formatted.replace(/^\s*[\r\n]/gm, '');
+
+  // Collassa multipli a capo in uno solo
+  formatted = formatted.replace(/\n+/g, '\n');
+
+  formatted = formatted.trim();
+
+  // 1. Markdown bold (**testo** -> strong)
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
-  // 2. Styling dei Titoli Standard (Li rendiamo blu e strutturati)
-  const titles = [
-    "Principio Attivo & Classe:",
-    "A cosa serve \\(Sintesi\\):"
+  // 2. Formattazione Sezioni Standard
+  // Il regex ora è più tollerante sugli spazi prima e dopo
+  const sections = [
+    { regex: /^\s*Principio Attivo & Classe[:]?/im, icon: "fa-file-waveform", label: "Principio Attivo & Classe" },
+    { regex: /^\s*A cosa serve \(Sintesi\)[:]?/im, icon: "fa-notes-medical", label: "A cosa serve (Sintesi)" }
   ];
 
-  titles.forEach(title => {
-    // Crea un'espressione regolare dinamica
-    const regex = new RegExp(`(${title})`, 'g');
-    // Sostituisce con uno stile a blocco blu
-    formatted = formatted.replace(regex, '<div class="font-bold text-blue-900 mt-4 mb-1 text-sm uppercase tracking-wide border-b border-blue-100 pb-1">$1</div>');
+  sections.forEach(sec => {
+    formatted = formatted.replace(sec.regex, () => {
+      return `<div class="font-bold text-[#23408e] mt-6 mb-2 text-sm uppercase tracking-wide border-b border-blue-100 pb-1 flex items-center gap-2">` +
+          `<i class="fa-solid ${sec.icon}"></i> ${sec.label}</div>`;
+    });
   });
 
-  // 3. Styling Speciale per l'ALERT (Box Rosso)
-  // Cerchiamo la stringa dell'alert e tutto ciò che segue fino alla fine o doppio a capo
-  if (formatted.includes("⚠️ ALERT")) {
-    // Avvolgiamo l'alert in un div rosso
-    formatted = formatted.replace(
-        /(⚠️ ALERT PER IL SOCCORRITORE:)/g,
-        '<div class="mt-5 p-4 bg-red-50 border border-red-200 rounded-xl text-red-900 shadow-sm"><strong class="block mb-2 text-red-700 flex items-center gap-2 text-sm uppercase tracking-bold"><i class="fa-solid fa-triangle-exclamation"></i> $1</strong>'
-    );
-    // Chiudiamo il div alla fine del testo
-    formatted += '</div>';
+  // 3. Gestione ALERT Speciale
+  const alertRegex = /(⚠️\s*ALERT PER IL SOCCORRITORE[:]?)/i;
+  const parts = formatted.split(alertRegex);
+
+  if (parts.length > 1) {
+    let preAlert = parts[0];
+    let alertContent = parts.slice(2).join("");
+
+    alertContent = alertContent.trim();
+
+    // Formattazione interna all'alert (Titoli Maiuscoli)
+    // Aggiunto supporto per gestire meglio gli spazi prima dei titoli
+    alertContent = alertContent.replace(/(^|<br>|\n)\s*([A-ZÀ-Ú\s\(\)\-\/']{3,}:)/gm, '<strong class="text-red-700 font-bold block mt-3 mb-1 text-xs uppercase tracking-wider">$2</strong>');
+
+    // Ricostruiamo il blocco Alert
+    formatted = preAlert +
+        '<div class="mt-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm text-slate-700 text-sm leading-relaxed">' +
+        '<strong class="text-red-700 flex items-center gap-2 mb-3 uppercase font-bold border-b border-red-200 pb-2">' +
+        '<i class="fa-solid fa-triangle-exclamation"></i> Alert Soccorritore' +
+        '</strong>' +
+        '<div>' +
+        alertContent +
+        '</div>' +
+        '</div>';
   }
 
-  // 4. Gestione "A Capo" se non c'è già HTML strutturale
-  if (!formatted.includes('<p>') && !formatted.includes('<br>')) {
-    formatted = formatted.replace(/\n/g, '<br>');
-  }
+  // 4. Gestione A Capo (Newline -> br)
+  formatted = formatted.replace(/\n/g, '<br>');
+
+  // 5. PULIZIA FINALE HTML
+  // Rimuove doppi <br> e br inutili
+  formatted = formatted.replace(/(<br>\s*){2,}/g, '<br>');
+  formatted = formatted.replace(/<br>\s*<div/g, '<div');
+  formatted = formatted.replace(/<\/div>\s*<br>/g, '</div>');
+  formatted = formatted.replace(/^<br>|<br>$/g, '');
 
   return formatted;
 };
@@ -66,13 +103,14 @@ const formatDrugResult = (text) => {
     <!-- Header -->
     <div class="mb-6">
       <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <span class="bg-blue-100 text-blue-700 p-2 rounded-lg w-10 h-10 flex items-center justify-center">
+        <!-- Icona Libro Medico -->
+        <span class="bg-blue-100 text-[#23408e] p-2 rounded-lg w-10 h-10 flex items-center justify-center">
                     <font-awesome-icon icon="book-medical" />
                 </span>
-        Prontuario AI
+        Prontuario Farmaci
       </h2>
       <p class="text-xs text-slate-500 mt-1">
-        Inserisci il nome del farmaco (es. "Coumadin", "Cardioaspirina") per conoscere classe e rischi per il soccorso.
+        Inserisci il nome del farmaco (es. "Coumadin", "Ramipril") per conoscere classe e rischi per il soccorso.
       </p>
     </div>
 
@@ -81,16 +119,15 @@ const formatDrugResult = (text) => {
       <input v-model="query"
              type="text"
              placeholder="Cerca farmaco..."
-             class="w-full p-4 pl-12 rounded-xl border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-lg bg-white"
+             class="w-full p-4 pl-12 rounded-xl border border-slate-300 shadow-sm focus:ring-2 focus:ring-[#23408e] outline-none text-lg bg-white"
              inputmode="search"
       >
       <div class="absolute left-4 top-4 text-slate-400 text-lg">
-        <!-- Icona lente (usiamo fontawesome standard se registrata o classe diretta) -->
         <i class="fa-solid fa-magnifying-glass"></i>
       </div>
 
       <button type="submit" :disabled="!query || loading"
-              class="absolute right-2 top-2 bottom-2 bg-blue-600 text-white px-4 rounded-lg font-bold disabled:opacity-50 disabled:bg-slate-300 transition-colors shadow-sm">
+              class="absolute right-2 top-2 bottom-2 bg-[#23408e] text-white px-4 rounded-lg font-bold disabled:opacity-50 disabled:bg-slate-300 transition-colors shadow-sm">
         Cerca
       </button>
     </form>
@@ -108,7 +145,7 @@ const formatDrugResult = (text) => {
 
     <!-- Disclaimer -->
     <div class="mt-8 p-4 rounded-lg bg-slate-50 border border-slate-100 text-[10px] text-slate-400 text-center">
-      <p class="font-bold mb-1"><i class="fa-solid fa-robot"></i> Generato da Intelligenza Artificiale</p>
+      <p class="font-bold mb-1"><font-awesome-icon icon="heart-circle-bolt" /> Generato da Database Ufficiale AIFA</p>
       I dati forniti sono indicativi. In caso di dubbio clinico o discrepanza, fai sempre riferimento alla centrale operativa o al bugiardino ufficiale.
     </div>
   </div>
