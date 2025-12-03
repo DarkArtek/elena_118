@@ -19,38 +19,33 @@ const handleSearch = async () => {
   loading.value = false;
 };
 
-// Funzione di formattazione AVANZATA & AGGRESSIVA (Versione 4.0 - Fix Markdown/HTML Conflict)
+// Funzione di formattazione AVANZATA & AGGRESSIVA (Versione 4.1 - Mobile Cache Buster)
 const formatDrugResult = (text) => {
   if (!text) return '';
 
   let formatted = text;
 
-  // 1. PULIZIA PROFONDA (Rimuove la "sporcizia" del Markdown e dell'HTML di base dell'AI)
+  // 1. PULIZIA PROFONDA (Regex ancora più generico)
 
-  // Rimuove i blocchi di codice Markdown (```html, ```) ovunque si trovino
-  formatted = formatted.replace(/```html/gi, '').replace(/```/gi, '');
+  // Rimuove QUALSIASI blocco di codice (```html, ```xml, ```json, o solo ```)
+  // [a-z]* cattura qualsiasi parola dopo i backtick
+  formatted = formatted.replace(/```[a-z]*\s*/gi, '').replace(/```/gi, '');
 
-  // Rimuove i numeri di lista all'inizio delle righe generati dal prompt (es. "1.", "2.")
+  // Rimuove numerazione liste (1., 2.)
   formatted = formatted.replace(/^\d+\.\s*/gm, '');
 
-  // Rimuove eventuali tag <b> o <strong> che l'AI mette nei titoli (perché li stilizziamo noi dopo)
-  // Questo è fondamentale perché altrimenti il regex successivo fallisce
+  // Rimuove tag HTML "sporchi" generati dall'AI prima della nostra formattazione
   formatted = formatted.replace(/<\/?b>/gi, '').replace(/<\/?strong>/gi, '');
 
-  // Rimuove righe che contengono solo spazi o caratteri invisibili
+  // Pulizia spazi vuoti multipli
   formatted = formatted.replace(/^\s*[\r\n]/gm, '');
-
-  // Collassa multipli a capo in uno solo
-  formatted = formatted.replace(/\n+/g, '\n');
   formatted = formatted.trim();
 
   // 2. LOGICA DI FORMATTAZIONE GRAFICA
-
-  // Markdown bold nel corpo del testo (**testo** -> strong)
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
-  // Formattazione Sezioni Standard (Principio Attivo e Uso)
-  // Il regex ora cerca il testo "pulito" senza tag HTML intorno
+  // ... [IL RESTO DEL CODICE RIMANE INVARIATO] ...
+
   const sections = [
     { regex: /Principio Attivo & Classe[:]?/im, icon: "fa-file-waveform", label: "Principio Attivo & Classe" },
     { regex: /A cosa serve \(Sintesi\)[:]?/im, icon: "fa-notes-medical", label: "A cosa serve (Sintesi)" }
@@ -63,43 +58,28 @@ const formatDrugResult = (text) => {
     });
   });
 
-  // 3. Gestione ALERT Speciale (Rosso)
-  // Cerchiamo l'alert ignorando case sensitivity e simboli extra
+  // ... [ALERT E RIMOZIONE BREAKLINE RIMANGONO UGUALI] ...
+
   const alertRegex = /(⚠️?\s*ALERT PER IL SOCCORRITORE[:]?)/i;
   const parts = formatted.split(alertRegex);
 
   if (parts.length > 1) {
-    // parts[0] è tutto ciò che c'è prima dell'alert
     let preAlert = parts[0];
-    // parts[2] (e successivi) è il contenuto dell'alert. Saltiamo parts[1] che è il titolo matchato
     let alertContent = parts.slice(2).join("");
-
     alertContent = alertContent.trim();
-
-    // Formattazione interna all'alert (Titoli Maiuscoli evidenziati in rosso scuro)
     alertContent = alertContent.replace(/(^|<br>|\n)\s*([A-ZÀ-Ú\s\(\)\-\/']{3,}:)/gm, '<strong class="text-red-700 font-bold block mt-3 mb-1 text-xs uppercase tracking-wider">$2</strong>');
 
-    // Ricostruiamo il blocco Alert con lo stile finale
     formatted = preAlert +
         '<div class="mt-8 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm text-slate-700 text-sm leading-relaxed">' +
         '<strong class="text-red-700 flex items-center gap-2 mb-3 uppercase font-bold border-b border-red-200 pb-2">' +
         '<i class="fa-solid fa-triangle-exclamation"></i> Alert Soccorritore' +
         '</strong>' +
-        '<div>' +
-        alertContent +
-        '</div>' +
+        '<div>' + alertContent + '</div>' +
         '</div>';
   }
 
-  // 4. Gestione A Capo (Newline -> br)
-  // Lo facciamo alla fine per non rompere i regex precedenti
   formatted = formatted.replace(/\n/g, '<br>');
-
-  // 5. PULIZIA FINALE HTML
-  // Rimuove doppi <br> e br inutili creati dalle sostituzioni
   formatted = formatted.replace(/(<br>\s*){2,}/g, '<br>');
-  formatted = formatted.replace(/<br>\s*<div/g, '<div');
-  formatted = formatted.replace(/<\/div>\s*<br>/g, '</div>');
   formatted = formatted.replace(/^<br>|<br>$/g, '');
 
   return formatted;
