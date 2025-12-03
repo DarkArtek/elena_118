@@ -19,7 +19,7 @@ async function updateAifaData(env) {
 
         log(`Trovate ${dataRows.length} righe. Inizio elaborazione...`);
 
-        // Batch size ottimizzato per Cloudflare Workers (evita limiti subrequests)
+        // Batch size ottimizzato per Cloudflare Workers
         const batchSize = 4000;
         let batch = [];
         let count = 0;
@@ -89,8 +89,9 @@ export default {
 
         try {
             const data = await request.json();
+            // Usa SERVICE_KEY per bypassare RLS e poter scrivere la cache
             const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY);
-            const MODEL_NAME = "gemini-2.5-pro"; // Assicurati che il modello sia corretto per la tua chiave
+            const MODEL_NAME = "gemini-2.5-pro";
 
             // ---------------------------------------------------------
             // MODALITÀ 0: AGGIORNAMENTO FORZATO (MANUALE)
@@ -101,7 +102,7 @@ export default {
             }
 
             // ---------------------------------------------------------
-            // MODALITÀ 1: RICERCA FARMACI (Ibrida & Caching FIX)
+            // MODALITÀ 1: RICERCA FARMACI (Smart Search & Cache)
             // ---------------------------------------------------------
             if (data.type === 'drug_search') {
                 const query = data.query.trim();
@@ -109,12 +110,26 @@ export default {
 
                 let dbRecord = null;
 
-                // 1. Cerca nel DB locale (Supabase)
-                const { data: farmaci, error: searchError } = await supabase
+                // 1. SMART SEARCH: Priorità ai record già analizzati dall'AI (Cache HIT)
+                // Prima cerchiamo se esiste una versione CACHED di questo farmaco (qualsiasi dosaggio)
+                let { data: farmaci, error: searchError } = await supabase
                     .from('farmaci')
                     .select('*')
                     .ilike('denominazione', `%${query}%`)
+                    .not('ai_summary', 'is', null) // Filtra solo quelli che hanno già una risposta AI
                     .limit(1);
+
+                // Se non troviamo nulla in cache, facciamo la ricerca standard (prendiamo il primo risultato disponibile)
+                if (!farmaci || farmaci.length === 0) {
+                    const fallback = await supabase
+                        .from('farmaci')
+                        .select('*')
+                        .ilike('denominazione', `%${query}%`)
+                        .limit(1);
+
+                    farmaci = fallback.data;
+                    searchError = fallback.error;
+                }
 
                 if (searchError) console.error("❌ Errore ricerca DB:", searchError.message);
 
@@ -127,7 +142,7 @@ export default {
                         console.log("🚀 Cache HIT: Restituisco dati salvati.");
                         return new Response(JSON.stringify({ analysis: dbRecord.ai_summary }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
                     } else {
-                        console.log("⚠️ Cache MISS: Il record esiste ma non ha dati AI.");
+                        console.log("⚠️ Cache MISS: Record trovato ma senza dati AI. Procedo con Gemini.");
                     }
                 } else {
                     console.log("❌ Farmaco non trovato nel DB AIFA locale.");
@@ -139,10 +154,10 @@ export default {
                     Analizza il farmaco richiesto: "${dbRecord ? dbRecord.denominazione : query}".
                     ${dbRecord ? `(Dati Ufficiali AIFA: Principio Attivo: ${dbRecord.principio_attivo})` : ''}
                     
-                    DEVI PRODURRE UN OUTPUT HTML CON QUESTA STRUTTURA ESATTA (senza markdown):
+                    DEVI PRODURRE UN OUTPUT HTML CON QUESTA STRUTTURA ESATTA (niente markdown, niente backticks):
                     1. <b>Principio Attivo & Classe:</b> [Nome], [Classe Farmacologica].
                     2. <b>A cosa serve (Sintesi):</b> [Indicazioni principali].
-                    3. <b>⚠️ ALERT PER IL SOCCORRITORE:</b> [Rischi vitali, interazioni critiche].
+                    3. <b>⚠️ ALERT PER IL SOCCORRITORE:</b> [Rischi vitali, interazioni critiche, avvertenze].
                 `;
 
                 console.log("🤖 Chiedo a Gemini...");
@@ -161,26 +176,30 @@ export default {
                 const geminiJson = await geminiResponse.json();
                 const aiText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text || "Nessuna informazione disponibile.";
 
-                // 4. Salvataggio Cache (Se abbiamo un record DB su cui agganciarci)
+                // 4. Salvataggio Cache (Massivo per Principio Attivo)
                 if (dbRecord) {
-                    console.log(`💾 Tento salvataggio cache per AIC: ${dbRecord.aic_code}...`);
+                    // Strategia: Se abbiamo il principio attivo, aggiorniamo TUTTI i farmaci identici.
+                    // Altrimenti (fallback), aggiorniamo solo il codice AIC specifico.
+                    const targetColumn = dbRecord.principio_attivo ? 'principio_attivo' : 'aic_code';
+                    const targetValue = dbRecord.principio_attivo || dbRecord.aic_code;
+
+                    console.log(`💾 Salvataggio cache massivo per ${targetColumn}: "${targetValue}"...`);
 
                     const { error: updateError } = await supabase
                         .from('farmaci')
                         .update({
                             ai_summary: aiText,
-                            ai_updated_at: new Date().toISOString() // FIX: Formato data corretto
+                            ai_updated_at: new Date().toISOString()
                         })
-                        .eq('aic_code', dbRecord.aic_code)
-                        .select();
+                        .eq(targetColumn, targetValue); // <--- QUI LA MAGIA
 
                     if (updateError) {
                         console.error("❌ Errore salvataggio cache:", updateError.message);
                     } else {
-                        console.log("✅ Cache salvata con successo!");
+                        console.log("✅ Cache salvata per tutte le varianti del farmaco!");
                     }
                 } else {
-                    console.warn("⚠️ Impossibile salvare cache: Nessun record DB associato (Ricerca generica).");
+                    console.warn("⚠️ Impossibile salvare cache: Nessun record DB associato.");
                 }
 
                 return new Response(JSON.stringify({ analysis: aiText }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
